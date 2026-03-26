@@ -61,8 +61,11 @@ export default function JSXPanel() {
             <div className="flex items-center gap-3 min-w-0">
               <Plane className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
               <div className="min-w-0">
-                <p className="text-sm font-medium leading-tight truncate">
-                  {route.origin} ({route.originCode}) → {route.destination} ({route.destinationCode})
+                <p className="text-sm font-medium leading-tight">
+                  {route.originCode} → {route.destinationCode}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {route.origin} → {route.destination}
                 </p>
                 <Badge variant="secondary" className="text-xs mt-1">
                   {route.tripType}
