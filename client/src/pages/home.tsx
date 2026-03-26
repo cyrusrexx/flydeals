@@ -1,10 +1,6 @@
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Plane, Moon, Sun, Bookmark, Trash2,
 } from "lucide-react";
@@ -17,90 +13,58 @@ import FeeAnalysisDialog from "@/components/FeeAnalysisDialog";
 import FlexibilityDialog from "@/components/FlexibilityDialog";
 import { PerplexityAttribution } from "@/components/PerplexityAttribution";
 import { useTheme } from "@/components/ThemeProvider";
-import type { FlightResult, FlightSearchRequest, SavedDeal } from "@shared/schema";
+import { searchFlights } from "@/lib/flightData";
+import type { FlightResult, SearchParams, SearchResponse } from "@/lib/flightData";
 
-interface SearchResponse {
-  flights: FlightResult[];
-  meta: {
-    total: number;
-    origin: string;
-    destination: string;
-    departDate: string;
-    returnDate?: string;
-    travelClass: string;
-    priceInsights: {
-      lowest: number;
-      highest: number;
-      average: number;
-      recommendation: string;
-    };
-  };
+interface SavedDeal {
+  id: number;
+  airline: string;
+  flightNumber: string;
+  price: number;
+  originalPrice: number;
+  origin: string;
+  destination: string;
+  travelClass: string;
 }
 
 export default function Home() {
   const { theme, toggleTheme } = useTheme();
-  const { toast } = useToast();
   const [searchResults, setSearchResults] = useState<SearchResponse | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
   const [feeAnalysisFlight, setFeeAnalysisFlight] = useState<FlightResult | null>(null);
   const [flexFlight, setFlexFlight] = useState<FlightResult | null>(null);
   const [showSaved, setShowSaved] = useState(false);
+  const [savedDeals, setSavedDeals] = useState<SavedDeal[]>([]);
+  const [nextId, setNextId] = useState(1);
 
-  const searchMutation = useMutation({
-    mutationFn: async (params: FlightSearchRequest) => {
-      const res = await apiRequest("POST", "/api/flights/search", params);
-      return (await res.json()) as SearchResponse;
-    },
-    onSuccess: (data) => {
-      setSearchResults(data);
-      toast({
-        title: `Found ${data.meta.total} flights`,
-        description: `${data.meta.origin} → ${data.meta.destination} from $${data.meta.priceInsights.lowest}`,
-      });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Search failed", description: err.message, variant: "destructive" });
-    },
-  });
+  const handleSearch = (params: SearchParams) => {
+    setIsSearching(true);
+    // Simulate a brief loading state for UX
+    setTimeout(() => {
+      const results = searchFlights(params);
+      setSearchResults(results);
+      setIsSearching(false);
+    }, 400);
+  };
 
-  const { data: savedDeals } = useQuery<SavedDeal[]>({
-    queryKey: ["/api/deals"],
-  });
+  const handleSaveDeal = (flight: FlightResult) => {
+    const deal: SavedDeal = {
+      id: nextId,
+      airline: flight.airline,
+      flightNumber: flight.flightNumber,
+      price: flight.price,
+      originalPrice: flight.price + (flight.savings || 0),
+      origin: flight.departure.airportId,
+      destination: flight.arrival.airportId,
+      travelClass: flight.travelClass,
+    };
+    setSavedDeals((prev) => [deal, ...prev]);
+    setNextId((n) => n + 1);
+  };
 
-  const saveDealMutation = useMutation({
-    mutationFn: async (flight: FlightResult) => {
-      const res = await apiRequest("POST", "/api/deals", {
-        airline: flight.airline,
-        price: flight.price,
-        originalPrice: flight.price + (flight.savings || 0),
-        origin: flight.departure.airportId,
-        destination: flight.arrival.airportId,
-        departTime: flight.departure.time,
-        arriveTime: flight.arrival.time,
-        duration: flight.duration,
-        stops: flight.stops,
-        travelClass: flight.travelClass,
-        flightNumber: flight.flightNumber,
-        airplane: flight.airplane,
-        legroom: flight.legroom,
-        extensions: JSON.stringify(flight.extensions),
-        bookingUrl: flight.bookingUrl,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
-      toast({ title: "Deal saved" });
-    },
-  });
-
-  const deleteDealMutation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/deals/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/deals"] });
-    },
-  });
+  const handleDeleteDeal = (id: number) => {
+    setSavedDeals((prev) => prev.filter((d) => d.id !== id));
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -127,7 +91,7 @@ export default function Home() {
             >
               <Bookmark className="h-3.5 w-3.5" />
               Saved
-              {savedDeals && savedDeals.length > 0 && (
+              {savedDeals.length > 0 && (
                 <Badge variant="secondary" className="text-xs ml-1 h-5 w-5 p-0 flex items-center justify-center rounded-full">
                   {savedDeals.length}
                 </Badge>
@@ -149,40 +113,35 @@ export default function Home() {
       {/* Main content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
         {/* Search Form */}
-        <FlightSearchForm
-          onSearch={(params) => searchMutation.mutate(params)}
-          isLoading={searchMutation.isPending}
-        />
+        <FlightSearchForm onSearch={handleSearch} isLoading={isSearching} />
 
         {/* Saved Deals Panel */}
         {showSaved && (
           <div className="mt-4 space-y-2" data-testid="saved-deals-panel">
-            <h2 className="text-sm font-semibold">Saved Deals ({savedDeals?.length || 0})</h2>
-            {(!savedDeals || savedDeals.length === 0) && (
+            <h2 className="text-sm font-semibold">Saved Deals ({savedDeals.length})</h2>
+            {savedDeals.length === 0 && (
               <p className="text-xs text-muted-foreground py-4 text-center">
                 No saved deals yet. Search for flights and bookmark the ones you like.
               </p>
             )}
-            {savedDeals?.map((deal) => (
+            {savedDeals.map((deal) => (
               <div
                 key={deal.id}
                 className="flex items-center justify-between p-3 rounded-lg border border-border/60 bg-card"
                 data-testid={`saved-deal-${deal.id}`}
               >
-                <div className="flex items-center gap-3">
-                  <div>
-                    <p className="text-sm font-medium">
-                      {deal.origin} → {deal.destination}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {deal.airline} · {deal.flightNumber} · {deal.travelClass}
-                    </p>
-                  </div>
+                <div>
+                  <p className="text-sm font-medium">
+                    {deal.origin} → {deal.destination}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {deal.airline} · {deal.flightNumber} · {deal.travelClass}
+                  </p>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="text-right">
                     <p className="text-sm font-bold tabular-nums text-primary">${deal.price}</p>
-                    {deal.originalPrice && deal.originalPrice > deal.price && (
+                    {deal.originalPrice > deal.price && (
                       <p className="text-xs line-through text-muted-foreground">${deal.originalPrice}</p>
                     )}
                   </div>
@@ -190,7 +149,7 @@ export default function Home() {
                     variant="ghost"
                     size="icon"
                     className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                    onClick={() => deleteDealMutation.mutate(deal.id)}
+                    onClick={() => handleDeleteDeal(deal.id)}
                     data-testid={`button-delete-deal-${deal.id}`}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -206,16 +165,16 @@ export default function Home() {
           {/* Left: Results */}
           <div className="lg:col-span-8 space-y-4">
             {/* Loading */}
-            {searchMutation.isPending && (
+            {isSearching && (
               <div className="space-y-3" data-testid="search-loading">
                 {[1, 2, 3, 4].map((i) => (
-                  <Skeleton key={i} className="h-28 w-full rounded-lg" />
+                  <div key={i} className="h-28 w-full rounded-lg bg-muted animate-pulse" />
                 ))}
               </div>
             )}
 
-            {/* Price insights */}
-            {searchResults && !searchMutation.isPending && (
+            {/* Results */}
+            {searchResults && !isSearching && (
               <>
                 <PriceInsights
                   insights={searchResults.meta.priceInsights}
@@ -237,7 +196,7 @@ export default function Home() {
                     key={flight.id}
                     flight={flight}
                     rank={idx + 1}
-                    onSave={(f) => saveDealMutation.mutate(f)}
+                    onSave={handleSaveDeal}
                     onAnalyzeFees={(f) => setFeeAnalysisFlight(f)}
                     onCheckFlexibility={(f) => setFlexFlight(f)}
                   />
@@ -246,7 +205,7 @@ export default function Home() {
             )}
 
             {/* Empty state */}
-            {!searchResults && !searchMutation.isPending && (
+            {!searchResults && !isSearching && (
               <div className="text-center py-16" data-testid="empty-state">
                 <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
                   <Plane className="h-8 w-8 text-primary" />

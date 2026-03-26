@@ -1,16 +1,103 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card } from "@/components/ui/card";
 import { Plane, ArrowRightLeft, Calendar, Users, Sliders, Search } from "lucide-react";
-import type { FlightSearchRequest } from "@shared/schema";
+import { airports } from "@/lib/flightData";
+import type { SearchParams } from "@/lib/flightData";
 
 interface Props {
-  onSearch: (params: FlightSearchRequest) => void;
+  onSearch: (params: SearchParams) => void;
   isLoading: boolean;
+}
+
+function AirportPicker({ value, onChange, label, testId }: { value: string; onChange: (code: string) => void; label: string; testId: string }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const selected = airports.find((a) => a.code === value);
+
+  const filtered = airports.filter((a) => {
+    if (!query) return true;
+    const q = query.toLowerCase();
+    return a.code.toLowerCase().includes(q) || a.city.toLowerCase().includes(q) || a.name.toLowerCase().includes(q);
+  });
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">{label}</Label>
+      <div
+        className="flex items-center gap-2 h-10 w-full rounded-md border border-input bg-background px-3 text-sm cursor-pointer hover:border-primary/50 transition-colors"
+        onClick={() => {
+          setOpen(true);
+          setQuery("");
+          setTimeout(() => inputRef.current?.focus(), 50);
+        }}
+        data-testid={testId}
+      >
+        <Plane className="h-3.5 w-3.5 text-primary shrink-0" />
+        <span className="truncate">
+          {selected ? `${selected.code} — ${selected.city}` : "Select airport"}
+        </span>
+      </div>
+
+      {open && (
+        <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-lg border border-border bg-popover shadow-lg overflow-hidden">
+          <div className="p-2 border-b border-border/50">
+            <Input
+              ref={inputRef}
+              placeholder="Type city, code, or name..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="h-8 text-sm"
+              autoFocus
+              data-testid={`${testId}-search`}
+            />
+          </div>
+          <div className="max-h-56 overflow-y-auto">
+            {filtered.length === 0 && (
+              <div className="px-3 py-4 text-xs text-muted-foreground text-center">
+                No airports found
+              </div>
+            )}
+            {filtered.slice(0, 20).map((a) => (
+              <button
+                key={a.code}
+                type="button"
+                className={`w-full text-left px-3 py-2 text-sm hover:bg-primary/10 transition-colors flex items-center gap-2 ${
+                  a.code === value ? "bg-primary/5 font-medium" : ""
+                }`}
+                onClick={() => {
+                  onChange(a.code);
+                  setOpen(false);
+                  setQuery("");
+                }}
+                data-testid={`airport-option-${a.code}`}
+              >
+                <span className="font-mono text-xs font-semibold text-primary w-8">{a.code}</span>
+                <span className="truncate">{a.city}</span>
+                <span className="text-xs text-muted-foreground ml-auto shrink-0 hidden sm:inline">{a.name.length > 25 ? a.name.slice(0, 25) + "…" : a.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function FlightSearchForm({ onSearch, isLoading }: Props) {
@@ -26,18 +113,12 @@ export default function FlightSearchForm({ onSearch, isLoading }: Props) {
     d.setDate(d.getDate() + 21);
     return d.toISOString().split("T")[0];
   });
-  const [travelClass, setTravelClass] = useState<"economy" | "premium_economy" | "business" | "first">("business");
+  const [travelClass, setTravelClass] = useState("business");
   const [passengers, setPassengers] = useState(1);
   const [flexDays, setFlexDays] = useState(3);
   const [maxStops, setMaxStops] = useState(1);
-  const [sortBy, setSortBy] = useState<"price" | "duration" | "departure" | "arrival" | "stops">("price");
+  const [sortBy, setSortBy] = useState("price");
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [originFilter, setOriginFilter] = useState("");
-  const [destFilter, setDestFilter] = useState("");
-
-  const { data: airports } = useQuery<Array<{ code: string; name: string; city: string }>>({
-    queryKey: ["/api/airports"],
-  });
 
   const swapAirports = () => {
     const tmp = origin;
@@ -60,52 +141,13 @@ export default function FlightSearchForm({ onSearch, isLoading }: Props) {
     });
   };
 
-  const filteredOriginAirports = airports?.filter(
-    (a) =>
-      originFilter === "" ||
-      a.code.toLowerCase().includes(originFilter.toLowerCase()) ||
-      a.city.toLowerCase().includes(originFilter.toLowerCase()) ||
-      a.name.toLowerCase().includes(originFilter.toLowerCase())
-  ) || [];
-
-  const filteredDestAirports = airports?.filter(
-    (a) =>
-      destFilter === "" ||
-      a.code.toLowerCase().includes(destFilter.toLowerCase()) ||
-      a.city.toLowerCase().includes(destFilter.toLowerCase()) ||
-      a.name.toLowerCase().includes(destFilter.toLowerCase())
-  ) || [];
-
   return (
     <Card className="p-5 border border-border/60 bg-card" data-testid="search-form">
       <form onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
           {/* Origin */}
           <div className="md:col-span-3">
-            <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">From</Label>
-            <Select value={origin} onValueChange={setOrigin}>
-              <SelectTrigger data-testid="select-origin" className="h-10">
-                <div className="flex items-center gap-2">
-                  <Plane className="h-3.5 w-3.5 text-primary" />
-                  <SelectValue />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <div className="p-2">
-                  <Input
-                    placeholder="Search airports..."
-                    value={originFilter}
-                    onChange={(e) => setOriginFilter(e.target.value)}
-                    className="h-8 text-sm"
-                  />
-                </div>
-                {filteredOriginAirports.slice(0, 15).map((a) => (
-                  <SelectItem key={a.code} value={a.code}>
-                    {a.code} — {a.city}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <AirportPicker value={origin} onChange={setOrigin} label="From" testId="select-origin" />
           </div>
 
           {/* Swap */}
@@ -124,30 +166,7 @@ export default function FlightSearchForm({ onSearch, isLoading }: Props) {
 
           {/* Destination */}
           <div className="md:col-span-3">
-            <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">To</Label>
-            <Select value={destination} onValueChange={setDestination}>
-              <SelectTrigger data-testid="select-destination" className="h-10">
-                <div className="flex items-center gap-2">
-                  <Plane className="h-3.5 w-3.5 text-accent rotate-90" style={{ color: "hsl(var(--accent))" }} />
-                  <SelectValue />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <div className="p-2">
-                  <Input
-                    placeholder="Search airports..."
-                    value={destFilter}
-                    onChange={(e) => setDestFilter(e.target.value)}
-                    className="h-8 text-sm"
-                  />
-                </div>
-                {filteredDestAirports.slice(0, 15).map((a) => (
-                  <SelectItem key={a.code} value={a.code}>
-                    {a.code} — {a.city}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <AirportPicker value={destination} onChange={setDestination} label="To" testId="select-destination" />
           </div>
 
           {/* Dates */}
@@ -184,7 +203,7 @@ export default function FlightSearchForm({ onSearch, isLoading }: Props) {
             <Button
               type="submit"
               disabled={isLoading}
-              className="w-full h-10 bg-primary hover:bg-primary/90"
+              className="w-full h-10 bg-primary hover:bg-primary/90 mt-5"
               data-testid="button-search"
             >
               <Search className="h-4 w-4" />
@@ -194,7 +213,7 @@ export default function FlightSearchForm({ onSearch, isLoading }: Props) {
 
         {/* Class & options row */}
         <div className="flex flex-wrap items-center gap-3 mt-3">
-          <Select value={travelClass} onValueChange={(v: any) => setTravelClass(v)}>
+          <Select value={travelClass} onValueChange={setTravelClass}>
             <SelectTrigger className="w-[160px] h-9 text-sm" data-testid="select-class">
               <SelectValue />
             </SelectTrigger>
@@ -213,8 +232,10 @@ export default function FlightSearchForm({ onSearch, isLoading }: Props) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {[1,2,3,4,5,6].map(n => (
-                  <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                {[1, 2, 3, 4, 5, 6].map((n) => (
+                  <SelectItem key={n} value={String(n)}>
+                    {n}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -232,7 +253,7 @@ export default function FlightSearchForm({ onSearch, isLoading }: Props) {
             {showAdvanced ? "Less options" : "More options"}
           </Button>
 
-          <Select value={sortBy} onValueChange={(v: any) => setSortBy(v)}>
+          <Select value={sortBy} onValueChange={setSortBy}>
             <SelectTrigger className="w-[130px] h-9 text-sm" data-testid="select-sort">
               <SelectValue placeholder="Sort by" />
             </SelectTrigger>
@@ -256,8 +277,10 @@ export default function FlightSearchForm({ onSearch, isLoading }: Props) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {[0,1,2,3,5,7].map(n => (
-                    <SelectItem key={n} value={String(n)}>±{n}</SelectItem>
+                  {[0, 1, 2, 3, 5, 7].map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      ±{n}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>

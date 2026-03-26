@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -6,9 +6,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { apiRequest } from "@/lib/queryClient";
 import { CheckCircle2, XCircle, Lightbulb } from "lucide-react";
-import type { FlightResult } from "@shared/schema";
+import { analyzeFees } from "@/lib/flightData";
+import type { FlightResult } from "@/lib/flightData";
 
 interface Props {
   flight: FlightResult | null;
@@ -16,24 +16,11 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
-interface FeeData {
-  fees: Record<string, { amount: number; avoidable: boolean; tip: string }>;
-  totalAvoidable: number;
-  summary: string;
-}
-
 export default function FeeAnalysisDialog({ flight, open, onOpenChange }: Props) {
-  const { data, isLoading } = useQuery<FeeData>({
-    queryKey: ["/api/flights/fees", flight?.travelClass, flight?.airline],
-    queryFn: async () => {
-      const res = await apiRequest("POST", "/api/flights/fees", {
-        travelClass: flight?.travelClass,
-        airline: flight?.airline,
-      });
-      return res.json();
-    },
-    enabled: !!flight && open,
-  });
+  const data = useMemo(() => {
+    if (!flight) return null;
+    return analyzeFees(flight.travelClass);
+  }, [flight]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -48,12 +35,6 @@ export default function FeeAnalysisDialog({ flight, open, onOpenChange }: Props)
             )}
           </DialogTitle>
         </DialogHeader>
-
-        {isLoading && (
-          <div className="py-8 text-center text-sm text-muted-foreground">
-            Analyzing fees...
-          </div>
-        )}
 
         {data && (
           <div className="space-y-3">

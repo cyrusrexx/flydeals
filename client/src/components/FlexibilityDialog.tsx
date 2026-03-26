@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -6,9 +6,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { apiRequest } from "@/lib/queryClient";
 import { Shield, AlertTriangle, CheckCircle2, Info } from "lucide-react";
-import type { FlightResult } from "@shared/schema";
+import { analyzeFlexibility } from "@/lib/flightData";
+import type { FlightResult } from "@/lib/flightData";
 
 interface Props {
   flight: FlightResult | null;
@@ -16,31 +16,16 @@ interface Props {
   onOpenChange: (open: boolean) => void;
 }
 
-interface FlexData {
-  changePolicy: { fee: number; note: string };
-  cancelPolicy: { refund: string; note: string };
-  riskScore: string;
-  recommendation: string;
-  hiddenClauses: string[];
-}
-
 export default function FlexibilityDialog({ flight, open, onOpenChange }: Props) {
-  const { data, isLoading } = useQuery<FlexData>({
-    queryKey: ["/api/flights/flexibility", flight?.travelClass, flight?.airline],
-    queryFn: async () => {
-      const res = await apiRequest("POST", "/api/flights/flexibility", {
-        travelClass: flight?.travelClass,
-        airline: flight?.airline,
-        price: flight?.price,
-      });
-      return res.json();
-    },
-    enabled: !!flight && open,
-  });
+  const data = useMemo(() => {
+    if (!flight) return null;
+    return analyzeFlexibility(flight.travelClass);
+  }, [flight]);
 
-  const riskColor = data?.riskScore === "Low"
-    ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
-    : "text-amber-600 dark:text-amber-400 bg-amber-500/10";
+  const riskColor =
+    data?.riskScore === "Low"
+      ? "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10"
+      : "text-amber-600 dark:text-amber-400 bg-amber-500/10";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -52,15 +37,8 @@ export default function FlexibilityDialog({ flight, open, onOpenChange }: Props)
           </DialogTitle>
         </DialogHeader>
 
-        {isLoading && (
-          <div className="py-8 text-center text-sm text-muted-foreground">
-            Analyzing policies...
-          </div>
-        )}
-
         {data && (
           <div className="space-y-4">
-            {/* Risk Score */}
             <div className="flex items-center gap-3">
               <Badge className={`text-sm px-3 py-1 ${riskColor}`}>
                 Risk: {data.riskScore}
@@ -72,7 +50,6 @@ export default function FlexibilityDialog({ flight, open, onOpenChange }: Props)
               )}
             </div>
 
-            {/* Change Policy */}
             <div className="p-3 rounded-lg bg-secondary/30">
               <div className="flex items-center gap-2 mb-1.5">
                 {data.changePolicy.fee === 0 ? (
@@ -85,12 +62,9 @@ export default function FlexibilityDialog({ flight, open, onOpenChange }: Props)
                   {data.changePolicy.fee === 0 ? "Free" : `$${data.changePolicy.fee} fee`}
                 </span>
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                {data.changePolicy.note}
-              </p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{data.changePolicy.note}</p>
             </div>
 
-            {/* Cancel Policy */}
             <div className="p-3 rounded-lg bg-secondary/30">
               <div className="flex items-center gap-2 mb-1.5">
                 <Info className="h-4 w-4 text-blue-500" />
@@ -99,17 +73,13 @@ export default function FlexibilityDialog({ flight, open, onOpenChange }: Props)
                   {data.cancelPolicy.refund}
                 </Badge>
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                {data.cancelPolicy.note}
-              </p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{data.cancelPolicy.note}</p>
             </div>
 
-            {/* Recommendation */}
             <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
               <p className="text-sm leading-relaxed">{data.recommendation}</p>
             </div>
 
-            {/* Hidden Clauses */}
             <div>
               <p className="text-xs font-medium text-muted-foreground mb-2">Things most people miss:</p>
               <ul className="space-y-1.5">

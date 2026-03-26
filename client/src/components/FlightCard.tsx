@@ -6,7 +6,7 @@ import {
   Plane, Clock, ArrowRight, Bookmark, ExternalLink, Leaf,
   CalendarCheck, Eye, Route, Tag, Shield
 } from "lucide-react";
-import type { FlightResult } from "@shared/schema";
+import type { FlightResult } from "@/lib/flightData";
 
 interface Props {
   flight: FlightResult;

@@ -1,31 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { ExternalLink, Crown, Plane } from "lucide-react";
-import type { JSXRoute } from "@shared/schema";
+import { jsxRoutes } from "@/lib/flightData";
 
 export default function JSXPanel() {
-  const { data, isLoading } = useQuery<{ routes: JSXRoute[]; total: number }>({
-    queryKey: ["/api/jsx/routes"],
-  });
-
-  if (isLoading) {
-    return (
-      <Card className="p-5 border border-border/60">
-        <Skeleton className="h-6 w-48 mb-4" />
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-16 w-full" />
-          ))}
-        </div>
-      </Card>
-    );
-  }
-
-  const routes = data?.routes || [];
-
   return (
     <Card className="p-5 border border-border/60 bg-card" data-testid="jsx-panel">
       <div className="flex items-center justify-between mb-4">
@@ -49,10 +27,10 @@ export default function JSXPanel() {
       </div>
 
       <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
-        {routes.map((route, i) => (
+        {jsxRoutes.map((route, i) => (
           <a
             key={i}
-            href={`https://flights.jsx.com/en/flights`}
+            href="https://flights.jsx.com/en/flights"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-between p-3 rounded-lg border border-border/40 hover:border-primary/30 hover:bg-primary/5 transition-colors group"
